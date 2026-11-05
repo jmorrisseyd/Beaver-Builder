@@ -20,6 +20,17 @@ The main sections inside the script are marked with `// ====` banner comments, i
 | Instanced plants | Rocks, flowers, swaying grass clumps (`updateGrass`), lily pads, reeds |
 | Game state … Update | Trees, dams, lodge, kits, journal/goals, UI, input, save/load and save codes, world setup, wildlife AI, main `update(dt)` loop |
 
+## Interface
+
+The UI is a small design system in the `<style>` block, in the spirit of Simon Willison's
+*Tree Appreciator*: dark chrome over the scene (hairline translucent pills, `--frame`
+on `--frame-ink`) and pale paper for sheets you read (`--paper` on `--ink`). Three
+fonts from Google Fonts: **IM Fell English** for display (`--font-display`),
+**Alegreya Sans** for UI text, **Alegreya Sans SC** for the letterspaced small-caps
+labels. The title screen is type set straight over the valley behind a gradient scrim,
+not a card; `#title .card` unsets the paper sheet that the journal uses. Every fallback
+stack is system fonts, so a blocked CDN degrades rather than breaks.
+
 ## Key mechanics
 
 - **Grid:** the simulation grid is `N×N` (129) nodes at `SP` = 1.25 m. `H` is terrain height, `dam` is the dam level per node (0–4, `DAM_STEP` = 0.5 m) and `eff = H + dam`.
