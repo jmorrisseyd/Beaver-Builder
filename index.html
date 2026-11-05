@@ -2326,7 +2326,7 @@ function addKit() {
   g.scale.setScalar(0.45);
   g.position.set(lodge.x + rand(-1, 1), 0, lodge.z + lodge.r + 0.8);
   scene.add(g);
-  kits.push({ g, tx: g.position.x, tz: g.position.z, wait: rand(0, 2), yaw: 0, ph: rand(0, 6) });
+  kits.push({ g, tx: g.position.x, tz: g.position.z, wait: rand(0, 2), yaw: 0, pitch: 0, ph: rand(0, 6) });
 }
 
 // ======================================================================
@@ -2700,31 +2700,33 @@ function randomNear(list, x, z, r) {
 // The tail is a long flat paddle cantilevered behind the body, so on a slope its
 // tip sits well away from the point the beaver stands on. TAIL_PIVOT/_LEN mirror
 // the tail group's placement in makeBeaver(); TAIL_BIAS is the mesh's own tilt.
+// `s` throughout is the body's scale, so kits get the same treatment, smaller.
 const TAIL_PIVOT_Y = 0.28, TAIL_PIVOT_Z = -0.68, TAIL_LEN = 0.98, TAIL_BIAS = 0.08, TAIL_CLEAR = 0.06;
 
 // Slope under the body, along the way it is facing: positive going downhill.
-function slopePitch(x, z, yaw, d = 0.9) {
-  const fx = Math.sin(yaw) * d, fz = Math.cos(yaw) * d;
+function slopePitch(x, z, yaw, s = 1) {
+  const d = 0.9 * s, fx = Math.sin(yaw) * d, fz = Math.cos(yaw) * d;
   return clamp(Math.atan2(groundAt(x - fx, z - fz) - groundAt(x + fx, z + fz), d * 2), -0.6, 0.6);
 }
 
 // World position of the tail tip for a given body pitch and tail angle.
-function tailTip(x, y, z, yaw, pitch, a) {
-  const ty = TAIL_PIVOT_Y + TAIL_LEN * Math.sin(a), tz = TAIL_PIVOT_Z - TAIL_LEN * Math.cos(a);
+function tailTip(x, y, z, yaw, pitch, a, s = 1) {
+  const ty = s * (TAIL_PIVOT_Y + TAIL_LEN * Math.sin(a)), tz = s * (TAIL_PIVOT_Z - TAIL_LEN * Math.cos(a));
   const ry = ty * Math.cos(pitch) - tz * Math.sin(pitch), rz = ty * Math.sin(pitch) + tz * Math.cos(pitch);
   return { y: y + ry, x: x + Math.sin(yaw) * rz, z: z + Math.cos(yaw) * rz };
 }
 
 // Raise the tail just enough that its tip clears the ground it is sweeping over.
-// The tip height is `base + TAIL_LEN * sin(a + pitch)`, so the angle that just
-// clears inverts directly; two passes settle the ground sample under the new tip.
-function tailLift(x, y, z, yaw, pitch, a) {
+// The tip height is `base + len * sin(a + pitch)`, so the angle that just clears
+// inverts directly; two passes settle the ground sample under the new tip.
+function tailLift(x, y, z, yaw, pitch, a, s = 1) {
+  const len = TAIL_LEN * s;
   for (let i = 0; i < 2; i++) {
-    const tip = tailTip(x, y, z, yaw, pitch, a);
-    const want = groundAt(tip.x, tip.z) + TAIL_CLEAR;
+    const tip = tailTip(x, y, z, yaw, pitch, a, s);
+    const want = groundAt(tip.x, tip.z) + TAIL_CLEAR * s;
     if (tip.y >= want) break;
-    const base = tip.y - TAIL_LEN * Math.sin(a + pitch);
-    a = Math.max(a, Math.asin(clamp((want - base) / TAIL_LEN, -1, 1)) - pitch);
+    const base = tip.y - len * Math.sin(a + pitch);
+    a = Math.max(a, Math.asin(clamp((want - base) / len, -1, 1)) - pitch);
   }
   return a;
 }
@@ -3283,7 +3285,13 @@ function update(dt) {
     faceTo(k.g, k.yaw, dt);
     const kg = groundAt(kp.x, kp.z), kw = surfAt(kp.x, kp.z), sw = kw - kg > 0.2;
     kp.y = sw ? kw - 0.16 + Math.sin(t * 4 + k.ph) * 0.02 : kg + Math.abs(Math.sin(t * 14 + k.ph)) * 0.04 * (d > 0.2 ? 1 : 0);
-    k.g.userData.tail.rotation.x = Math.sin(t * 8 + k.ph) * 0.3;
+    const ks = k.g.scale.x, kyaw = k.g.rotation.y;
+    const kPitch = sw ? 0 : slopePitch(kp.x, kp.z, kyaw, ks);
+    k.pitch += (kPitch - k.pitch) * Math.min(1, dt * 6);
+    k.g.userData.rig.rotation.x = k.pitch;
+    let kTail = Math.sin(t * 8 + k.ph) * 0.3;
+    if (!sw) kTail = tailLift(kp.x, kp.y, kp.z, kyaw, k.pitch, kTail + TAIL_BIAS, ks) - TAIL_BIAS;
+    k.g.userData.tail.rotation.x = kTail;
     if (sw && d > 0.2 && Math.random() < dt * 3) ripple(kp.x, kw, kp.z, 0.5);
   }
 
