@@ -517,28 +517,33 @@ function makeWaterMat(speed) {
       uDeep: { value: new THREE.Color(0x1d5a74) }, uShallow: { value: new THREE.Color(0x52b0c4) }, uSky: { value: new THREE.Color(0xcfe6ee) },
       uSunDir: { value: new THREE.Vector3(0.5, 0.8, 0.3) }, uSunCol: { value: new THREE.Color(0xfff0d0) },
     }]),
-    vertexShader: `uniform float uTime; varying vec3 vW;
+    vertexShader: `uniform float uTime; varying vec3 vW; varying vec2 vFlow; attribute vec2 aFlow;
       #include <fog_pars_vertex>
       void main(){
         vec4 w = modelMatrix * vec4(position, 1.0);
-        w.y += sin(w.x * 0.7 + uTime * 1.3) * 0.02 + cos(w.z * 0.6 + uTime * 1.1) * 0.02;
+        vFlow = aFlow;
+        float chop = 1.0 + length(aFlow) * 1.6;
+        w.y += (sin(w.x * 0.7 + uTime * 1.3) * 0.02 + cos(w.z * 0.6 + uTime * 1.1) * 0.02) * chop;
         vW = w.xyz;
         vec4 mvPosition = viewMatrix * w;
         gl_Position = projectionMatrix * mvPosition;
         #include <fog_vertex>
       }`,
-    fragmentShader: `uniform float uTime, uSpeed, uOpacity, uStyle; uniform vec3 uDeep, uShallow, uSky, uSunDir, uSunCol; varying vec3 vW;
+    fragmentShader: `uniform float uTime, uSpeed, uOpacity, uStyle; uniform vec3 uDeep, uShallow, uSky, uSunDir, uSunCol; varying vec3 vW; varying vec2 vFlow;
       #include <fog_pars_fragment>
       float hsh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       float vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(hsh(i), hsh(i + vec2(1.0, 0.0)), f.x), mix(hsh(i + vec2(0.0, 1.0)), hsh(i + vec2(1.0, 1.0)), f.x), f.y); }
-      float H(vec2 q, float t){
-        vec2 fl = vec2(0.0, t * uSpeed);
-        return vn(q * 0.8 - fl * 0.8) * 0.55 + vn(q * 2.1 + vec2(t * 0.25, -t * uSpeed * 1.4)) * 0.3 + vn(q * 4.7 - fl * 2.2 + vec2(-t * 0.2, 0.0)) * 0.15;
+      // the surface is dragged along the current, so still ponds stay glassy
+      // and the channel (or a spill past a dam) streams past at its own pace
+      float H(vec2 q, float t, vec2 fl){
+        return vn(q * 0.8 - fl * 0.8) * 0.55 + vn(q * 2.1 - fl * 1.4 + vec2(t * 0.25, 0.0)) * 0.3 + vn(q * 4.7 - fl * 2.2 + vec2(-t * 0.2, 0.0)) * 0.15;
       }
       void main(){
         vec2 p = vW.xz; float t = uTime; float e = 0.12;
-        float h0 = H(p, t), hx = H(p + vec2(e, 0.0), t), hz = H(p + vec2(0.0, e), t);
+        vec2 fl = vFlow * t * uSpeed;
+        float rush = length(vFlow);
+        float h0 = H(p, t, fl), hx = H(p + vec2(e, 0.0), t, fl), hz = H(p + vec2(0.0, e), t, fl);
         vec3 n = normalize(vec3((h0 - hx) / e * 0.3, 1.0, (h0 - hz) / e * 0.3));
         vec3 v = normalize(cameraPosition - vW);
         float fres = pow(1.0 - max(dot(n, v), 0.0), 3.0);
@@ -547,15 +552,19 @@ function makeWaterMat(speed) {
         vec3 r = reflect(-normalize(uSunDir), n);
         float sp = pow(max(dot(r, v), 0.0), 140.0);
         col += uSunCol * sp * 2.2;
-        float glint = step(0.995, vn(p * 9.0 + vec2(t * 0.9, -t * uSpeed * 2.0))) * 0.2;
+        float glint = step(0.995, vn(p * 9.0 - fl * 2.0 + vec2(t * 0.9, 0.0))) * 0.2;
         col += uSunCol * glint * smoothstep(0.2, 0.8, max(normalize(uSunDir).y, 0.0));
-        float streak = smoothstep(0.72, 0.95, vn(vec2(p.x * 2.6, p.y * 0.35 - t * uSpeed * 1.6)));
+        vec2 fp = p - fl * 1.6;
+        float streak = smoothstep(0.72, 0.95, vn(fp * vec2(2.6, 0.35)));
         col += streak * 0.012 * uSpeed;
+        // white water where the current runs quick: the channel, and anything spilling past a dam
+        float foam = smoothstep(0.78, 1.35, rush) * smoothstep(0.45, 0.92, vn(fp * 3.2 + vec2(0.0, t * 0.4)));
+        col = mix(col, vec3(0.93, 0.97, 1.0), foam * 0.6);
         if (uStyle > 0.5 && uStyle < 1.5) {
           vec3 c2 = mix(uDeep, uShallow, 0.3 + 0.32 * step(0.56, h0));
           c2 = mix(c2, uSky, step(0.72, fres) * 0.3);
-          float foam = step(0.87, vn(vec2(p.x * 2.6, p.y * 0.6 - t * uSpeed * 1.4))) * step(0.4, vn(p * 0.7 + vec2(t * 0.1, 0.0)));
-          c2 = mix(c2, vec3(0.95, 0.99, 1.0), foam * 0.75);
+          float foam2 = step(0.87, vn(fp * vec2(2.6, 0.6))) * step(0.4, vn(p * 0.7 + vec2(t * 0.1, 0.0)));
+          c2 = mix(c2, vec3(0.95, 0.99, 1.0), max(foam2 * 0.75, smoothstep(0.78, 1.3, rush) * 0.5));
           c2 += uSunCol * step(0.35, sp) * 0.9;
           col = c2;
         } else if (uStyle > 1.5) {
@@ -1697,7 +1706,7 @@ function makeFish() {
 // ======================================================================
 const N = 129, SP = 1.25, HALF = (N - 1) * SP / 2, NN = N * N, MARGIN = 36;
 const DAM_STEP = 0.5, DAM_MAX = 4, STREAM_D = 0.38, DAY_LEN = 360, CAP = 6;
-const RISE = 0.07, FALL = 0.18;
+const RISE = 0.07, FALL = 0.18, INFLOW = 4.2, RISE_MIN = 0.014, FALL_MIN = 0.02;
 const nodeX = (i) => -HALF + (i % N) * SP, nodeZ = (i) => -HALF + Math.floor(i / N) * SP;
 function idxOf(x, z) {
   const ix = Math.round((x + HALF) / SP), iz = Math.round((z + HALF) / SP);
@@ -1735,6 +1744,8 @@ function genHeight(x, z) {
 
 const H = new Float32Array(NN), eff = new Float32Array(NN), filled = new Float32Array(NN), streamS = new Float32Array(NN);
 const dam = new Uint8Array(NN), river = new Uint8Array(NN), closed = new Uint8Array(NN), wet = new Uint8Array(NN), ponded = new Uint8Array(NN);
+// how far gone each dam section is, 0 soundly packed to 1 washed out, plus the head of water it holds
+const wear = new Float32Array(NN), damHead = new Float32Array(NN), wearSync = new Float32Array(NN);
 const target = new Float32Array(NN), pondL = new Float32Array(NN).fill(NaN), surf = new Float32Array(NN), wdist = new Uint8Array(NN);
 let comps = [];
 
@@ -1769,7 +1780,7 @@ const queue = new Int32Array(NN);
 // Where does the water sit? Priority-flood the land (terrain + dams) from the outlet,
 // then keep only the pools that are connected to the stream.
 function computeWater(instant = false) {
-  for (let i = 0; i < NN; i++) eff[i] = H[i] + dam[i] * DAM_STEP;
+  for (let i = 0; i < NN; i++) eff[i] = H[i] + Math.max(0, dam[i] - wear[i]) * DAM_STEP;
   closed.fill(0); heapN = 0;
   for (let ix = 0; ix < N; ix++) { const i = (N - 1) * N + ix; filled[i] = eff[i]; closed[i] = 1; hpush(i, eff[i]); }
   while (heapN) {
@@ -1844,10 +1855,26 @@ function computeWater(instant = false) {
       wdist[n] = d + 1; queue[qt++] = n;
     }
   }
+  for (let i = 0; i < NN; i++) { damHead[i] = dam[i] ? headAt(i) : 0; wearSync[i] = wear[i]; }
   waterDirty = true;
   colorsDirty = true;
 }
 let drainNodes = [], waterDirty = true, colorsDirty = true;
+
+// the drop in water (or failing that, ground) across a dam section: what is
+// pushing on it, and so how hard it works and how fast it wears
+function headAt(i) {
+  const cx = i % N, cz = (i / N) | 0;
+  let hi = -1e9, lo = 1e9;
+  for (let k = 0; k < 4; k++) {
+    const x = cx + DX[k], z = cz + DZ[k];
+    if (x < 0 || z < 0 || x >= N || z >= N) continue;
+    const n = z * N + x, s = nodeSurf(n), v = s > -1e8 ? s : H[n];
+    if (v > hi) hi = v;
+    if (v < lo) lo = v;
+  }
+  return hi < -1e8 ? 0 : clamp(hi - lo, 0, 3);
+}
 
 function nodeSurf(i) {
   let s = -1e9;
@@ -1858,9 +1885,13 @@ function nodeSurf(i) {
 }
 function stepWater(dt) {
   let moving = false;
+  // the stream delivers a roughly fixed volume per second, so the level a pond
+  // gains depends on how much surface it has to spread over
+  const q = INFLOW * (1 + rainAmt * 0.8);
   for (const c of comps) {
-    if (c.L < c.T) { c.L = Math.min(c.T, c.L + RISE * dt); moving = true; }
-    else if (c.L > c.T) { c.L = Math.max(c.T, c.L - FALL * dt); moving = true; }
+    const area = Math.max(1, c.nodes.length * SP * SP);
+    if (c.L < c.T) { c.L = Math.min(c.T, c.L + clamp(q / area, RISE_MIN, RISE) * dt); moving = true; }
+    else if (c.L > c.T) { c.L = Math.max(c.T, c.L - clamp(q * 1.6 / area, FALL_MIN, FALL) * dt); moving = true; }
     else continue;
     for (const n of c.nodes) pondL[n] = c.L;
   }
@@ -1912,6 +1943,7 @@ const watGeo = new THREE.BufferGeometry();
     ind.push(a, c, b, b, c, d);
   }
   watGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  watGeo.setAttribute('aFlow', new THREE.BufferAttribute(new Float32Array(NN * 2), 2));
   watGeo.setIndex(ind);
 }
 const waterMat = makeWaterMat(0.5);
@@ -1946,6 +1978,30 @@ function updateWaterMesh() {
     pos[i * 3 + 1] = y;
   }
   watGeo.attributes.position.needsUpdate = true;
+  updateFlow();
+}
+
+// Water runs down the slope of its own surface. A pond surface is flat, so it sits
+// still; the channel falls steadily, so it runs; the step below a dam is the
+// steepest thing around, so that is where it tears along. Only wet neighbours
+// count, or a high bank would read as a slope and push the pond sideways.
+function updateFlow() {
+  const fl = watGeo.attributes.aFlow.array;
+  for (let i = 0; i < NN; i++) {
+    const s = surf[i];
+    if (s < -1e8) { fl[i * 2] = 0; fl[i * 2 + 1] = 0; continue; }
+    const cx = i % N, cz = (i / N) | 0;
+    const sx1 = cx + 1 < N && surf[i + 1] > -1e8 ? surf[i + 1] : s;
+    const sx0 = cx > 0 && surf[i - 1] > -1e8 ? surf[i - 1] : s;
+    const sz1 = cz + 1 < N && surf[i + N] > -1e8 ? surf[i + N] : s;
+    const sz0 = cz > 0 && surf[i - N] > -1e8 ? surf[i - N] : s;
+    const gx = (sx0 - sx1) / (2 * SP), gz = (sz0 - sz1) / (2 * SP);
+    const m = Math.hypot(gx, gz);
+    if (m < 2e-4) { fl[i * 2] = 0; fl[i * 2 + 1] = 0; continue; }
+    const spd = Math.min(1.5, Math.sqrt(m) * 2.4);
+    fl[i * 2] = (gx / m) * spd; fl[i * 2 + 1] = (gz / m) * spd;
+  }
+  watGeo.attributes.aFlow.needsUpdate = true;
 }
 
 const tmpC = new THREE.Color(), cUnder = C(0x4a6058), cLush = C(0xc8ffb0), cDry = C(0xffe8c0);
@@ -2319,6 +2375,61 @@ function buildDamMesh(i) {
   g.position.set(nodeX(i), H[i] - 0.08, nodeZ(i));
   scene.add(g);
   damMeshes.set(i, g);
+  setDamSag(i);
+}
+// wear shows as the pile slumping and settling into the stream bed
+function setDamSag(i) {
+  const g = damMeshes.get(i);
+  if (!g) return;
+  const w = wear[i];
+  g.scale.set(1, 1 - w * 0.3, 1);
+  g.position.y = H[i] - 0.08 - w * 0.05;
+}
+
+// ---------- dams wear down and leak ----------
+const WEAR_RATE = 0.0035, PATCH_AT = 0.12, LEAK_AT = 0.22;
+let wearDrift = 0, leakWarned = false, leakT = 0, patchHinted = false;
+function worstDam() {
+  let w = 0;
+  for (const i of damMeshes.keys()) if (dam[i]) w = Math.max(w, wear[i]);
+  return w;
+}
+function wearDams(dt) {
+  if (!running || !damMeshes.size) return;
+  leakT -= dt;
+  for (const i of [...damMeshes.keys()]) {
+    if (!dam[i]) continue;
+    const head = damHead[i] = headAt(i);
+    if (head <= 0.05) continue;                        // holding nothing back, so nothing to wear it
+    wear[i] += dt * WEAR_RATE * (0.3 + head) * (1 + rainAmt * 1.5);
+    wearDrift = Math.max(wearDrift, wear[i] - wearSync[i]);   // crest drop since the water was last solved
+    if (wear[i] >= 1) {                                // the section finally gives way
+      wear[i] = 0;
+      dam[i]--;
+      buildDamMesh(i);
+      computeWater();
+      wearDrift = 0;
+      Snd.splash();
+      burst(nodeX(i), H[i] + dam[i] * DAM_STEP + 0.25, nodeZ(i), 14, 'water', 1.8, 3);
+      toast(`${icon('log')} A worn section of your dam washed out. Patch it with a log.`, 4000);
+      continue;
+    }
+    if (wear[i] > LEAK_AT && head > 0.1 && leakT <= 0 && Math.random() < dt * 2.5) {
+      leakT = 0.5;                                     // water finding its way through the sticks
+      const lx = nodeX(i) + rand(-0.4, 0.4), lz = nodeZ(i) + SP * 0.8;
+      ripple(lx, Math.max(H[i] + 0.04, surfAt(lx, lz)), lz, 0.45);
+      burst(lx, H[i] + Math.max(0, dam[i] - wear[i]) * DAM_STEP * 0.5, lz, 3, 'water', 0.5, 1.1, 11);
+    }
+  }
+  if (wearDrift * DAM_STEP > 0.05) {                   // the crests have dropped enough to move the water
+    wearDrift = 0;
+    computeWater();
+    for (const i of damMeshes.keys()) setDamSag(i);
+  }
+  if (!leakWarned && worstDam() > LEAK_AT) {
+    leakWarned = true;
+    toast(`${icon('splash')} Your dam is springing leaks. Bring a log over and patch it.`, 4200);
+  }
 }
 const ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fe39a, transparent: true, opacity: 0.4, depthWrite: false });
 const ghost = new THREE.Mesh(new THREE.BoxGeometry(SP * 0.92, DAM_STEP, SP * 0.92), ghostMat);
@@ -2437,6 +2548,12 @@ function renderGoal() {
 function openJournal() {
   const done = GOALS.filter((g) => goals[g[0]]).length, found = Object.keys(DISC).filter((k) => disc[k]).length;
   let h = `<h1 style="font-size:30px">📖 Journal</h1><p class="muted">Day ${day} · ${Math.round(area)} m² of wetland · ${trees.length} trees</p>`;
+  const sections = [...damMeshes.keys()].filter((i) => dam[i]);
+  if (sections.length) {
+    const w = worstDam();
+    const state = w > 0.6 ? 'close to washing out' : w > LEAK_AT ? 'leaking, needs patching' : w > PATCH_AT ? 'starting to wear' : 'sound';
+    h += `<p class="muted">Dam · ${sections.length} section${sections.length > 1 ? 's' : ''} · ${state}</p>`;
+  }
   h += `<h2>Goals · ${done}/${GOALS.length}</h2><ul>`;
   for (const [k, name, hint] of GOALS) h += `<li class="${goals[k] ? '' : 'todo'}"><span>${goals[k] ? '✅' : '◻️'}</span><span>${name}${goals[k] ? '' : `<small>${hint}</small>`}</span></li>`;
   h += `</ul><h2>Wildlife & plants · ${found}/${Object.keys(DISC).length}</h2><ul>`;
@@ -2568,9 +2685,9 @@ try { if (localStorage.getItem('beaverMute') === '1') { Snd.muted = true; $('mut
 // ======================================================================
 const SAVE_KEY = 'beaverValley1';
 function snapshot() {
-  const dams = [];
-  for (let i = 0; i < NN; i++) if (dam[i]) dams.push(i, dam[i]);
-  return { seed, dams, felled: [...felled], snagged: [...snagged], carry, lodge: lodge && { x: lodge.x, z: lodge.z, tier: lodge.tier, progress: lodge.progress }, goals: { ...goals }, disc: { ...disc }, dayT, day, kits: kits.length, px: player.pos.x, pz: player.pos.z };
+  const dams = [], worn = [];
+  for (let i = 0; i < NN; i++) if (dam[i]) { dams.push(i, dam[i]); if (wear[i] > 0.02) worn.push(i, Math.round(wear[i] * 100)); }
+  return { seed, dams, worn, felled: [...felled], snagged: [...snagged], carry, lodge: lodge && { x: lodge.x, z: lodge.z, tier: lodge.tier, progress: lodge.progress }, goals: { ...goals }, disc: { ...disc }, dayT, day, kits: kits.length, px: player.pos.x, pz: player.pos.z };
 }
 function save() {
   if (!running) return;
@@ -2592,7 +2709,7 @@ async function makeCode() {
   for (let k = 0; k < st.dams.length; k += 2) { d.push(st.dams[k] - last, st.dams[k + 1]); last = st.dams[k]; }
   const o = { v: 1, s: st.seed, d, f: deltas(st.felled), n: deltas(st.snagged), c: st.carry,
     l: st.lodge ? [Math.round(st.lodge.x * 10), Math.round(st.lodge.z * 10), st.lodge.tier, st.lodge.progress] : 0,
-    g: toBits(st.goals, GOAL_KEYS), k: toBits(st.disc, DISC_KEYS), t: Math.round(st.dayT * 1000), y: st.day, kn: st.kits, p: [Math.round(st.px * 10), Math.round(st.pz * 10)] };
+    g: toBits(st.goals, GOAL_KEYS), k: toBits(st.disc, DISC_KEYS), t: Math.round(st.dayT * 1000), y: st.day, kn: st.kits, p: [Math.round(st.px * 10), Math.round(st.pz * 10)], w: st.worn };
   const raw = new TextEncoder().encode(JSON.stringify(o));
   try { if (typeof CompressionStream !== 'undefined') return 'BV1-' + b64url(await pipeBytes(raw, new CompressionStream('deflate-raw'))); } catch (_) {}
   return 'BV0-' + b64url(raw);
@@ -2608,7 +2725,7 @@ async function readCode(str) {
   for (let k = 0; k < o.d.length; k += 2) { idx += o.d[k]; dams.push(idx, o.d[k + 1]); }
   return { seed: o.s, dams, felled: undeltas(o.f), snagged: undeltas(o.n), carry: o.c,
     lodge: o.l ? { x: o.l[0] / 10, z: o.l[1] / 10, tier: o.l[2], progress: o.l[3] } : null,
-    goals: fromBits(o.g, GOAL_KEYS), disc: fromBits(o.k, DISC_KEYS), dayT: o.t / 1000, day: o.y, kits: o.kn, px: o.p[0] / 10, pz: o.p[1] / 10 };
+    goals: fromBits(o.g, GOAL_KEYS), disc: fromBits(o.k, DISC_KEYS), dayT: o.t / 1000, day: o.y, kits: o.kn, px: o.p[0] / 10, pz: o.p[1] / 10, worn: o.w || [] };
 }
 async function copyText(text, ta) {
   try { await navigator.clipboard.writeText(text); return true; } catch (_) {}
@@ -2642,7 +2759,8 @@ function buildWorld(data) {
   for (const k of Object.keys(goals)) delete goals[k];
   for (const k of Object.keys(disc)) delete disc[k];
   if (data) { Object.assign(goals, data.goals); Object.assign(disc, data.disc); }
-  dam.fill(0); river.fill(0); pondL.fill(NaN);
+  dam.fill(0); wear.fill(0); damHead.fill(0); river.fill(0); pondL.fill(NaN);
+  wearDrift = 0; leakWarned = false; patchHinted = false;
   for (let i = 0; i < NN; i++) {
     const x = nodeX(i), z = nodeZ(i);
     H[i] = genHeight(x, z);
@@ -2650,6 +2768,7 @@ function buildWorld(data) {
     streamS[i] = baseZ(z) - 0.75 + STREAM_D;
   }
   if (data) for (let k = 0; k < data.dams.length; k += 2) dam[data.dams[k]] = data.dams[k + 1];
+  if (data && data.worn) for (let k = 0; k < data.worn.length; k += 2) wear[data.worn[k]] = data.worn[k + 1] / 100;
   computeWater(true);
   buildTerrain();
   updateWaterMesh();
@@ -2854,7 +2973,7 @@ function buildTarget() {
   const i = idxOf(fx, fz);
   if (i < 0) return null;
   const cx = i % N, cz = (i / N) | 0;
-  let ok = cx > 1 && cz > 1 && cx < N - 2 && cz < N - 2 && dam[i] < DAM_MAX;
+  let ok = cx > 1 && cz > 1 && cx < N - 2 && cz < N - 2 && (dam[i] < DAM_MAX || wear[i] > PATCH_AT);
   if (lodge && Math.hypot(nodeX(i) - lodge.x, nodeZ(i) - lodge.z) < lodge.r + 0.9) ok = false;
   return { i, ok };
 }
@@ -2949,6 +3068,7 @@ function update(dt) {
   Snd.setAmb(rainAmt, 0.025 + Math.min(0.05, area / 20000));
 
   // ---- water ----
+  wearDams(dt);
   stepWater(dt);
   if (waterDirty) { updateWaterMesh(); waterDirty = false; }
   measureT -= dt;
@@ -3111,22 +3231,32 @@ function update(dt) {
   buildBtn.classList.toggle('hidden', !(running && carry > 0));
   ghost.visible = !!bt;
   if (bt) {
-    const lvl = dam[bt.i];
-    ghost.position.set(nodeX(bt.i), H[bt.i] + lvl * DAM_STEP + DAM_STEP / 2 + 0.02, nodeZ(bt.i));
-    ghostMat.color.setHex(bt.ok ? 0x9fe39a : 0xff8a7a);
+    const lvl = dam[bt.i], worn = lvl > 0 && wear[bt.i] > PATCH_AT;
+    const gy = worn ? Math.max(0, lvl - 0.5) * DAM_STEP : lvl * DAM_STEP + DAM_STEP / 2 + 0.02;
+    ghost.position.set(nodeX(bt.i), H[bt.i] + gy, nodeZ(bt.i));
+    ghostMat.color.setHex(!bt.ok ? 0xff8a7a : worn ? 0xe8c37a : 0x9fe39a);
     ghostMat.opacity = 0.32 + Math.sin(t * 4) * 0.08;
-    $('buildLabel').textContent = !bt.ok ? (lvl >= DAM_MAX ? 'Max height' : "Can't build") : lvl ? `Raise ${lvl + 1}/${DAM_MAX}` : 'Build dam';
+    $('buildLabel').textContent = !bt.ok ? (lvl >= DAM_MAX ? 'Max height' : "Can't build") : worn ? 'Patch dam' : lvl ? `Raise ${lvl + 1}/${DAM_MAX}` : 'Build dam';
     buildBtn.classList.toggle('off', !bt.ok);
     if (buildReq && bt.ok) {
-      dam[bt.i]++; carry--;
+      carry--;
       Snd.knock();
-      shake = Math.max(shake, 0.05);
-      burst(nodeX(bt.i), H[bt.i] + dam[bt.i] * DAM_STEP, nodeZ(bt.i), 10, 'wood', 2, 3);
-      buildDamMesh(bt.i);
-      computeWater();
-      if (river[bt.i]) completeGoal('dam');
-      if (dam[bt.i] >= DAM_MAX) completeGoal('raise');
-      if (!goals.pond && river[bt.i]) toast('Water backs up behind the dam. Make it wider than the stream to hold a pond.', 4200);
+      if (worn) {                                   // fresh sticks and mud packed into the worn section
+        wear[bt.i] = 0;
+        burst(nodeX(bt.i), H[bt.i] + lvl * DAM_STEP * 0.7, nodeZ(bt.i), 8, 'wood', 1.6, 2.4);
+        buildDamMesh(bt.i);
+        computeWater();
+        if (!patchHinted) { patchHinted = true; toast('Patched. A dam only holds as long as someone keeps mending it.', 3400); }
+      } else {
+        dam[bt.i]++;
+        shake = Math.max(shake, 0.05);
+        burst(nodeX(bt.i), H[bt.i] + dam[bt.i] * DAM_STEP, nodeZ(bt.i), 10, 'wood', 2, 3);
+        buildDamMesh(bt.i);
+        computeWater();
+        if (river[bt.i]) completeGoal('dam');
+        if (dam[bt.i] >= DAM_MAX) completeGoal('raise');
+        if (!goals.pond && river[bt.i]) toast('Water backs up behind the dam. Make it wider than the stream to hold a pond.', 4200);
+      }
     }
   }
   buildReq = false;
