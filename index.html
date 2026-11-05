@@ -2394,8 +2394,8 @@ function setDamSag(i) {
 }
 
 // ---------- dams wear down and leak ----------
-const WEAR_RATE = 0.00175, PATCH_AT = 0.12, LEAK_AT = 0.22;
-let wearDrift = 0, leakWarned = false, leakT = 0, patchHinted = false;
+const WEAR_RATE = 0.0009, PATCH_AT = 0.12, LEAK_AT = 0.22, KIT_MEND = 0.0006;
+let leakWarned = false, leakT = 0, patchHinted = false, mendHinted = false;
 function worstDam() {
   let w = 0;
   for (const i of damMeshes.keys()) if (dam[i]) w = Math.max(w, wear[i]);
@@ -2409,13 +2409,11 @@ function wearDams(dt) {
     const head = damHead[i] = headAt(i);
     if (head <= 0.05) continue;                        // holding nothing back, so nothing to wear it
     wear[i] += dt * WEAR_RATE * (0.3 + head) * (1 + rainAmt * 1.5);
-    wearDrift = Math.max(wearDrift, wear[i] - wearSync[i]);   // crest drop since the water was last solved
     if (wear[i] >= 1) {                                // the section finally gives way
       wear[i] = 0;
       dam[i]--;
       buildDamMesh(i);
       computeWater();
-      wearDrift = 0;
       Snd.splash();
       burst(nodeX(i), H[i] + dam[i] * DAM_STEP + 0.25, nodeZ(i), 14, 'water', 1.8, 3);
       toast(`${icon('log')} A worn section of your dam washed out. Patch it with a log.`, 4000);
@@ -2428,8 +2426,23 @@ function wearDams(dt) {
       burst(lx, H[i] + Math.max(0, dam[i] - wear[i]) * DAM_STEP * 0.5, lz, 3, 'water', 0.5, 1.1, 11);
     }
   }
-  if (wearDrift * DAM_STEP > 0.05) {                   // the crests have dropped enough to move the water
-    wearDrift = 0;
+  // the kits potter along the dam pressing sticks and mud back in, worst section first.
+  // one kit cannot keep up with much; a family of them holds a modest dam steady.
+  if (kits.length) {
+    let mend = kits.length * KIT_MEND * dt, worstI = -1, worstW = 0;
+    for (const i of damMeshes.keys()) if (dam[i] && wear[i] > worstW) { worstW = wear[i]; worstI = i; }
+    if (worstI >= 0 && worstW > 0) {
+      wear[worstI] = Math.max(0, worstW - mend);
+      if (!mendHinted && worstW > PATCH_AT) {
+        mendHinted = true;
+        toast(`${icon('beaver')} Your kits have started mending the dam with you.`, 4000);
+      }
+    }
+  }
+  // the crests have drifted far enough, either way, to move the water
+  let drift = 0;
+  for (const i of damMeshes.keys()) if (dam[i]) drift = Math.max(drift, Math.abs(wear[i] - wearSync[i]));
+  if (drift * DAM_STEP > 0.05) {
     computeWater();
     for (const i of damMeshes.keys()) setDamSag(i);
   }
@@ -2437,6 +2450,16 @@ function wearDams(dt) {
     leakWarned = true;
     toast(`${icon('splash')} Your dam is springing leaks. Bring a log over and patch it.`, 4200);
   }
+}
+
+// somewhere along the dam for a kit to potter over to, if it is near enough to home
+function kitDamSpot() {
+  if (!lodge) return null;
+  const opts = [];
+  for (const i of damMeshes.keys()) if (dam[i] && Math.hypot(nodeX(i) - lodge.x, nodeZ(i) - lodge.z) < 18) opts.push(i);
+  if (!opts.length) return null;
+  const i = pick(opts);
+  return { x: nodeX(i) + rand(-0.6, 0.6), z: nodeZ(i) + SP * 0.9 };
 }
 const ghostMat = new THREE.MeshBasicMaterial({ color: 0x9fe39a, transparent: true, opacity: 0.4, depthWrite: false });
 const ghost = new THREE.Mesh(new THREE.BoxGeometry(SP * 0.92, DAM_STEP, SP * 0.92), ghostMat);
@@ -2559,7 +2582,7 @@ function openJournal() {
   if (sections.length) {
     const w = worstDam();
     const state = w > 0.6 ? 'breaking up, patch it now' : w > LEAK_AT ? 'leaking, needs patching' : w > PATCH_AT ? 'starting to wear' : 'sound';
-    h += `<p class="muted">Dam · ${sections.length} section${sections.length > 1 ? 's' : ''} · ${state}</p>`;
+    h += `<p class="muted">Dam · ${sections.length} section${sections.length > 1 ? 's' : ''} · ${state}${kits.length ? ` · ${kits.length} kit${kits.length > 1 ? 's' : ''} mending` : ''}</p>`;
   }
   h += `<h2>Goals · ${done}/${GOALS.length}</h2><ul>`;
   for (const [k, name, hint] of GOALS) h += `<li class="${goals[k] ? '' : 'todo'}"><span>${goals[k] ? '✅' : '◻️'}</span><span>${name}${goals[k] ? '' : `<small>${hint}</small>`}</span></li>`;
@@ -2783,7 +2806,7 @@ function buildWorld(data) {
   for (const k of Object.keys(disc)) delete disc[k];
   if (data) { Object.assign(goals, data.goals); Object.assign(disc, data.disc); }
   dam.fill(0); wear.fill(0); damHead.fill(0); river.fill(0); pondL.fill(NaN);
-  wearDrift = 0; leakWarned = false; patchHinted = false;
+  leakWarned = false; patchHinted = false; mendHinted = false;
   for (let i = 0; i < NN; i++) {
     const x = nodeX(i), z = nodeZ(i);
     H[i] = genHeight(x, z);
@@ -2982,10 +3005,12 @@ function spawnLife(nightAmt) {
 // ======================================================================
 // Context action
 // ======================================================================
+// how grown a tree is, 0 for a fresh sapling and 1 once it has filled out
+const treeFrac = (tr) => clamp(tr.g.scale.x / tr.size, 0, 1);
 function nearestTree(maxD) {
   let best = null, bd = maxD;
   for (const tr of trees) {
-    if (tr.state !== 'stand') continue;
+    if (tr.state !== 'stand' && tr.state !== 'grow') continue;
     const d = Math.hypot(tr.x - player.pos.x, tr.z - player.pos.z);
     if (d < bd) { bd = d; best = tr; }
   }
@@ -3199,7 +3224,9 @@ function update(dt) {
   actCool -= dt;
   if (!ctx) setAction(carry >= CAP ? 'log' : 'tooth', carry >= CAP ? 'Full' : 'Chew', false);
   else if (ctx.type === 'chew') {
-    const tr = ctx.tr, need = tr.kind === 'pine' ? 1.8 : tr.kind === 'snag' ? 0.9 : 1.3;
+    const tr = ctx.tr, frac = treeFrac(tr), young = frac < 0.98;
+    // a sapling is a thinner trunk, so it comes down quicker and carries less wood
+    const need = (tr.kind === 'pine' ? 1.8 : tr.kind === 'snag' ? 0.9 : 1.3) * Math.max(0.35, frac);
     if (actHeld) {
       player.chewing = true;
       tr.chew += dt;
@@ -3209,12 +3236,14 @@ function update(dt) {
       if (chewSnd <= 0) { chewSnd = 0.14; Snd.chomp(); }
       if (tr.chew >= need) {
         tr.state = 'falling';
+        tr.logs = Math.max(1, Math.floor((tr.kind === 'pine' ? 4 : tr.kind === 'snag' ? 2 : 3) * frac));
+        tr.frac = frac;
         tr.dir.set(tr.x - player.pos.x, tr.z - player.pos.z).normalize();
         tr.axis.set(tr.dir.y, 0, -tr.dir.x).normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), -tr.g.rotation.y);
         Snd.creak();
       }
     }
-    setAction('tooth', 'Chew', true, clamp(tr.chew / need, 0, 1));
+    setAction('tooth', young ? 'Gnaw' : 'Chew', true, clamp(tr.chew / need, 0, 1));
   } else if (ctx.type === 'lodge') {
     if (actHeld && actCool <= 0) {
       actCool = 0.3; carry--; lodge.progress++;
@@ -3314,8 +3343,8 @@ function update(dt) {
       tr.g.position.y = tr.h - 0.05 - tr.fallT * 1.2;
       if (tr.fallT > 0.5) {
         scene.remove(tr.g);
-        const n = tr.kind === 'pine' ? 4 : tr.kind === 'snag' ? 2 : 3;
-        for (let k = 0; k < n; k++) dropLog(tr.x + tr.dir.x * (1.1 + k * 0.9) + rand(-0.3, 0.3), tr.z + tr.dir.y * (1.1 + k * 0.9) + rand(-0.3, 0.3));
+        const n = tr.logs || (tr.kind === 'pine' ? 4 : tr.kind === 'snag' ? 2 : 3), reach = Math.max(0.55, tr.frac || 1);
+        for (let k = 0; k < n; k++) dropLog(tr.x + tr.dir.x * (1.1 + k * 0.9) * reach + rand(-0.3, 0.3), tr.z + tr.dir.y * (1.1 + k * 0.9) * reach + rand(-0.3, 0.3));
         if (tr.id >= 0) felled.add(tr.id);
         trees.splice(i, 1);
       }
@@ -3484,8 +3513,10 @@ function update(dt) {
     if (d < 0.2) {
       k.wait -= dt;
       if (k.wait <= 0) {
-        const near = Math.random() < 0.3 && Math.hypot(player.pos.x - lodge.x, player.pos.z - lodge.z) < 12;
-        if (near) { k.tx = player.pos.x + rand(-1.5, 1.5); k.tz = player.pos.z + rand(-1.5, 1.5); }
+        const spot = Math.random() < 0.35 ? kitDamSpot() : null;
+        const near = !spot && Math.random() < 0.3 && Math.hypot(player.pos.x - lodge.x, player.pos.z - lodge.z) < 12;
+        if (spot) { k.tx = spot.x; k.tz = spot.z; }
+        else if (near) { k.tx = player.pos.x + rand(-1.5, 1.5); k.tz = player.pos.z + rand(-1.5, 1.5); }
         else { const a = rand(0, Math.PI * 2), r = rand(lodge.r + 0.6, lodge.r + 5); k.tx = lodge.x + Math.cos(a) * r; k.tz = lodge.z + Math.sin(a) * r; }
         k.wait = rand(2, 6);
       }
