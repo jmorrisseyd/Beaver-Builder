@@ -6,6 +6,8 @@ build a lodge, and wildlife moves in as the wetland grows. There is no fail stat
 
 **▶ [Play it in your browser](https://jmorrisseyd.github.io/Beaver-Builder/)**
 
+[![Beaver Valley: a beaver beside a stream in an autumn valley](docs/screenshot.jpg)](https://jmorrisseyd.github.io/Beaver-Builder/)
+
 ## Controls
 
 | | Desktop |
