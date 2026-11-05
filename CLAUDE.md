@@ -31,6 +31,13 @@ labels. The title screen is type set straight over the valley behind a gradient 
 not a card; `#title .card` unsets the paper sheet that the journal uses. Every fallback
 stack is system fonts, so a blocked CDN degrades rather than breaks.
 
+Interface glyphs are line icons from an inline SVG sprite at the top of `<body>`
+(`<symbol id="i-…">`, 24px grid, 1.6 stroke, `currentColor`), used through
+`icon(name)` in the script or `<use href="#i-name">` in markup. The journal keeps
+emoji on purpose: its wildlife and plant entries read as content, not chrome.
+`setAction()` only rewrites the act button when the icon or label actually
+changes, since it is called every frame.
+
 ## Key mechanics
 
 - **Grid:** the simulation grid is `N×N` (129) nodes at `SP` = 1.25 m. `H` is terrain height, `dam` is the dam level per node (0–4, `DAM_STEP` = 0.5 m) and `eff = H + dam`.

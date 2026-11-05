@@ -25,6 +25,8 @@
   .pop { position: absolute; left: 0; top: 0; font-weight: 500; font-size: 19px; color: var(--frame-ink); white-space: nowrap; text-shadow: 0 1px 12px rgba(0,0,0,.55), 0 1px 2px rgba(0,0,0,.4); will-change: transform, opacity; }
   .pop.big { font-family: var(--font-display); font-size: 29px; }
   .hidden { opacity: 0 !important; pointer-events: none !important; }
+  .i { width: 1.12em; height: 1.12em; display: inline-block; vertical-align: -.17em; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .val { display: inline-flex; align-items: center; gap: 7px; }
 
   /* ---- chrome over the scene: hairline pills, never a filled card ---- */
   #hud { position: fixed; top: calc(10px + var(--safe-t)); left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r)); display: flex; gap: 7px; align-items: stretch; pointer-events: none; z-index: 5; transition: opacity .5s; }
@@ -45,12 +47,14 @@
   #banner.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
   #joy { position: fixed; width: 124px; height: 124px; margin: -62px 0 0 -62px; border-radius: 50%; background: rgba(241, 239, 230, .06); border: 1px solid rgba(241, 239, 230, .45); display: none; pointer-events: none; z-index: 7; }
   #knob { position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%; background: rgba(241, 239, 230, .82); }
+  #joyHint .i { margin-right: 6px; }
   #joyHint { position: fixed; left: calc(24px + var(--safe-l)); bottom: calc(126px + var(--safe-b)); font-family: var(--font-sc); font-size: 14px; letter-spacing: .12em; color: var(--frame-ink); pointer-events: none; z-index: 4; text-shadow: 0 1px 10px rgba(0,0,0,.6); animation: bob 1.8s ease-in-out infinite; }
   @keyframes bob { 50% { transform: translateY(-5px); } }
 
   /* ---- action buttons ---- */
   .btn { position: fixed; border-radius: 50%; border: 1px solid var(--frame-line); color: var(--frame-ink); font-family: var(--font-sc); font-weight: 500; letter-spacing: .1em; z-index: 8; touch-action: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; transition: transform .12s var(--ease), opacity .35s, filter .2s; }
-  .btn .ic { font-size: 26px; line-height: 1; }
+  .btn .ic { font-size: 26px; line-height: 0; }
+  .btn .ic .i { stroke-width: 1.5; }
   /* the act button is pale, so give its glyph an edge to sit against */
   #act .ic { filter: drop-shadow(0 1px 1px rgba(29, 38, 32, .45)); }
   #act { --p: 0; right: calc(20px + var(--safe-r)); bottom: calc(24px + var(--safe-b)); width: 104px; height: 104px; font-size: 13px; color: var(--ink); border: none;
@@ -82,6 +86,7 @@
   #title .card li { border-top: 1px solid var(--frame-line); }
   .card li:first-child { border-top: none; }
   .card li > span:first-child { flex: 0 0 26px; font-size: 17px; text-align: center; opacity: .9; }
+  #title .card li > span:first-child { font-size: 19px; line-height: 0; display: flex; justify-content: center; color: var(--frame-ink); }
   .card li.todo { opacity: .48; }
   .card li small { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 3px; }
   #title .card li small { color: var(--frame-dim); }
@@ -105,26 +110,46 @@
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }</script>
 </head>
 <body>
+<!-- Line icons, drawn to sit with the type: 24px grid, 1.6 stroke, currentColor. -->
+<svg id="icons" aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="i-log" viewBox="0 0 24 24"><path d="M6.5 6.5h11M6.5 17.5h11"/><ellipse cx="6.5" cy="12" rx="2" ry="5.5"/><path d="M17.5 6.5a2 5.5 0 0 1 0 11"/><ellipse cx="6.5" cy="12" rx=".9" ry="2.4"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M4.8 19.2c-.8-7.3 4.2-13.4 14.4-14.4 1 10.2-5.1 15.2-12.4 14.4"/><path d="M7.6 18.2c1.8-4.2 4.6-7.4 8.4-9.6"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M12 7.4C10 5.8 7.4 5.1 4.5 5.4v12c2.9-.3 5.5.4 7.5 2 2-1.6 4.6-2.3 7.5-2v-12c-2.9-.3-5.5.4-7.5 2z"/><path d="M12 7.4v12"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="5.8"/><path d="M15 15 20 20"/></symbol>
+  <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9.6h3.4L11.8 6v12L7.4 14.4H4z"/><path d="M15.2 9.6a4 4 0 0 1 0 4.8M17.8 7.4a7.4 7.4 0 0 1 0 9.2"/></symbol>
+  <symbol id="i-mute" viewBox="0 0 24 24"><path d="M4 9.6h3.4L11.8 6v12L7.4 14.4H4z"/><path d="M15.4 10.2 20 14.4M20 10.2l-4.6 4.2"/></symbol>
+  <symbol id="i-tooth" viewBox="0 0 24 24"><path d="M7.2 4.8c-1.8 0-2.9 1.5-2.9 3.5 0 3.2 1.5 4.6 2.1 7.4.4 1.9.6 3.5 1.9 3.5 1.6 0 1.5-3.6 3-3.6s1.4 3.6 3 3.6c1.3 0 1.5-1.6 1.9-3.5.6-2.8 2.1-4.2 2.1-7.4 0-2-1.1-3.5-2.9-3.5-1.7 0-2.5.9-4.1.9s-2.4-.9-4.1-.9z"/></symbol>
+  <symbol id="i-splash" viewBox="0 0 24 24"><path d="M12 3.4c3.7 4.4 5.6 7.3 5.6 9.7a5.6 5.6 0 0 1-11.2 0c0-2.4 1.9-5.3 5.6-9.7z"/><path d="M3.4 13.2 1.8 14.6M20.6 13.2l1.6 1.4M5.2 18.4 4 20.2M18.8 18.4l1.2 1.8"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="3.4"/><circle cx="12" cy="12" r=".9" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-touch" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.8"/><path d="M12 3.6 14.2 6.4h-4.4zM12 20.4 9.8 17.6h4.4zM3.6 12 6.4 9.8v4.4zM20.4 12 17.6 14.2V9.8z"/></symbol>
+  <symbol id="i-lodge" viewBox="0 0 24 24"><path d="M3.2 18.4h17.6"/><path d="M4.8 18.4C5.6 12.6 8.4 9 12 9s6.4 3.6 7.2 9.4"/><path d="M6.6 14.4h10.8M8.8 11.2h6.4"/></symbol>
+  <symbol id="i-axe" viewBox="0 0 24 24"><path d="M4.8 19.2 12.5 11.5"/><path d="M11.9 10.9 16.1 6.7c2.2 1 3.9 2.7 4.9 4.9l-4.2 4.2z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.8 12.4 9.8 17.6 19.2 6.8"/></symbol>
+  <symbol id="i-duck" viewBox="0 0 24 24"><ellipse cx="10.6" cy="14.6" rx="6" ry="3.5"/><circle cx="16.2" cy="9.2" r="2.7"/><path d="M14.3 11.2c-.8.8-1.6 1.6-2.3 2.2"/><path d="M18.7 8.4h2.8l-1.3 1.5h-1.6"/><circle cx="16.8" cy="8.6" r=".6" fill="currentColor" stroke="none"/><path d="M2.8 19.6h18.4"/></symbol>
+  <symbol id="i-beaver" viewBox="0 0 24 24"><circle cx="6.4" cy="7.4" r="1.8"/><circle cx="17.6" cy="7.4" r="1.8"/><path d="M12 5.4c-3.7 0-6.6 2.8-6.6 6.2S8.3 18 12 18s6.6-2.9 6.6-6.4S15.7 5.4 12 5.4z"/><circle cx="9.5" cy="10.6" r=".8" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10.6" r=".8" fill="currentColor" stroke="none"/><path d="M10.4 13.8h3.2v3.1h-3.2zM12 13.8v3.1"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4"/><path d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6"/></symbol>
+  <symbol id="i-rain" viewBox="0 0 24 24"><path d="M7.6 14.6a3.6 3.6 0 0 1 .4-7.2 5.2 5.2 0 0 1 9.7 1.3 3.1 3.1 0 0 1-.8 5.9z"/><path d="M8.4 17.4 7.4 20M12 17.4 11 20M15.6 17.4l-1 2.6"/></symbol>
+</svg>
 <div id="game"></div>
 <div id="fx"></div>
 
 <div id="hud" class="hidden">
-  <div class="pill"><small>Logs</small><span id="wood">🪵 0/6</span></div>
-  <div class="pill" id="wetPill"><small>Wetland</small><span id="wet">🌿 0 m²</span><div class="bar"><i id="wetBar"></i></div></div>
+  <div class="pill"><small>Logs</small><span class="val"><svg class="i" aria-hidden="true"><use href="#i-log"/></svg><span id="wood">0/6</span></span></div>
+  <div class="pill" id="wetPill"><small>Wetland</small><span class="val"><svg class="i" aria-hidden="true"><use href="#i-leaf"/></svg><span id="wet">0 m²</span></span><div class="bar"><i id="wetBar"></i></div></div>
   <div id="btns">
-    <button class="pill ibtn" id="journalBtn" aria-label="Journal">📖</button>
-    <button class="pill ibtn" id="zoomBtn" aria-label="Zoom">🔍</button>
-    <button class="pill ibtn" id="mute" aria-label="Sound">🔊</button>
+    <button class="pill ibtn" id="journalBtn" aria-label="Journal"><svg class="i" aria-hidden="true"><use href="#i-book"/></svg></button>
+    <button class="pill ibtn" id="zoomBtn" aria-label="Zoom"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg></button>
+    <button class="pill ibtn" id="mute" aria-label="Sound"><svg class="i" aria-hidden="true"><use href="#i-sound"/></svg></button>
   </div>
 </div>
 <div class="pill hidden" id="goal"></div>
 <div id="toast"></div>
 <div id="banner"></div>
 <div id="joy"><div id="knob"></div></div>
-<div id="joyHint" style="display:none">👆 Drag anywhere to wander</div>
-<button id="slap" class="btn hidden"><span class="ic">💦</span><span>Splash</span></button>
-<button id="build" class="btn hidden"><span class="ic">🪵</span><span id="buildLabel">Build dam</span></button>
-<button id="act" class="btn off hidden"><span class="ic" id="actIcon">🦷</span><span id="actLabel">Chew</span></button>
+<div id="joyHint" style="display:none"><svg class="i" aria-hidden="true"><use href="#i-touch"/></svg>Drag anywhere to wander</div>
+<button id="slap" class="btn hidden"><span class="ic"><svg class="i" aria-hidden="true"><use href="#i-splash"/></svg></span><span>Splash</span></button>
+<button id="build" class="btn hidden"><span class="ic"><svg class="i" aria-hidden="true"><use href="#i-log"/></svg></span><span id="buildLabel">Build dam</span></button>
+<button id="act" class="btn off hidden"><span class="ic" id="actIcon"><svg class="i" aria-hidden="true"><use href="#i-tooth"/></svg></span><span id="actLabel">Chew</span></button>
 
 <div class="overlay" id="title">
   <div class="card">
@@ -132,10 +157,10 @@
     <h1>Beaver <i>Valley</i></h1>
     <p class="lede">A quiet stream, a valley of trees, and all the time in the world.</p>
     <ul>
-      <li><span>🦷</span><span>Chew trees for logs.</span></li>
-      <li><span>🪵</span><span>Build dams anywhere. Water backs up and fills the land behind them.</span></li>
-      <li><span>🏡</span><span>Build a lodge in deep water and raise a family.</span></li>
-      <li><span>🦆</span><span>Your wetland draws in wildlife. Fill your journal.</span></li>
+      <li><span><svg class="i" aria-hidden="true"><use href="#i-tooth"/></svg></span><span>Chew trees for logs.</span></li>
+      <li><span><svg class="i" aria-hidden="true"><use href="#i-log"/></svg></span><span>Build dams anywhere. Water backs up and fills the land behind them.</span></li>
+      <li><span><svg class="i" aria-hidden="true"><use href="#i-lodge"/></svg></span><span>Build a lodge in deep water and raise a family.</span></li>
+      <li><span><svg class="i" aria-hidden="true"><use href="#i-duck"/></svg></span><span>Your wetland draws in wildlife. Fill your journal.</span></li>
     </ul>
     <div id="startBtns"><button id="newBtn">New valley</button></div>
     <p><button class="ghost" id="codeLink">I have a save code</button></p>
@@ -2371,6 +2396,7 @@ const GOALS = [
   ['w500', 'Grow the wetland to 500 m²', 'Try a second dam further up or down the valley.'],
   ['w1000', 'Grow the wetland to 1,000 m²', 'A whole valley of ponds.'],
 ];
+const icon = (n) => `<svg class="i" aria-hidden="true"><use href="#i-${n}"/></svg>`;
 const DISC = {
   lily: ['🪷', 'Lily pads', 'Root in the soft pond bed and float their leaves on calm water.'],
   cattail: ['🌾', 'Cattails', 'Grow along the new shoreline. Good cover for nesting birds.'],
@@ -2398,7 +2424,7 @@ function completeGoal(k) {
   Snd.goal();
   const el = $('goal');
   el.classList.add('done');
-  el.textContent = `✅ ${g[1]}`;
+  el.innerHTML = `${icon('check')} ${g[1]}`;
   popup('Goal complete!', player.pos.x, player.y + 2.2, player.pos.z, 'big');
   setTimeout(renderGoal, 2600);
 }
@@ -2406,7 +2432,7 @@ function renderGoal() {
   const el = $('goal');
   el.classList.remove('done');
   const g = GOALS.find((x) => !goals[x[0]]);
-  el.textContent = g ? `🎯 ${g[1]}` : '🌿 Your valley is thriving';
+  el.innerHTML = g ? `${icon('target')} ${g[1]}` : `${icon('leaf')} Your valley is thriving`;
 }
 function openJournal() {
   const done = GOALS.filter((g) => goals[g[0]]).length, found = Object.keys(DISC).filter((k) => disc[k]).length;
@@ -2431,7 +2457,7 @@ function openJournal() {
   $('codeMake').onclick = async () => { $('codeOut').value = await makeCode(); $('codeMsg').textContent = ''; };
   $('codeCopy').onclick = async () => {
     if (!$('codeOut').value) $('codeOut').value = await makeCode();
-    $('codeCopy').textContent = (await copyText($('codeOut').value, $('codeOut'))) ? 'Copied ✓' : 'Select & copy';
+    $('codeCopy').textContent = (await copyText($('codeOut').value, $('codeOut'))) ? 'Copied' : 'Select & copy';
   };
   $('codeLoad').onclick = async () => {
     try { const data = await readCode($('codeIn').value); $('journal').classList.add('hide'); startGame(data); }
@@ -2452,7 +2478,7 @@ function openJournal() {
 let toastTimer = 0, bannerTimer = 0;
 function toast(msg, ms = 2600) {
   const t = $('toast');
-  t.textContent = msg;
+  t.innerHTML = msg;
   t.classList.add('show');
   toastTimer = ms / 1000;
 }
@@ -2470,16 +2496,16 @@ const projV = new THREE.Vector3();
 function popup(text, x, y, z, cls = '') {
   const el = document.createElement('div');
   el.className = 'pop ' + cls;
-  el.textContent = text;
+  el.innerHTML = text;
   fxBox.appendChild(el);
   pops.push({ el, p: new THREE.Vector3(x, y, z), t: 0, life: cls ? 1.8 : 1.3 });
   if (pops.length > 20) { const o = pops.shift(); o.el.remove(); }
 }
 const MILESTONES = [40, 100, 200, 350, 500, 750, 1000, 1500, 2000];
 function updateHUD() {
-  $('wood').textContent = `🪵 ${carry}/${CAP}`;
+  $('wood').textContent = `${carry}/${CAP}`;
   areaShown += (area - areaShown) * 0.1;
-  $('wet').textContent = `🌿 ${Math.round(areaShown)} m²`;
+  $('wet').textContent = `${Math.round(areaShown)} m²`;
   const next = MILESTONES.find((m) => m > area) || MILESTONES[MILESTONES.length - 1];
   const prev = [...MILESTONES].reverse().find((m) => m <= area) || 0;
   $('wetBar').style.width = `${clamp((area - prev) / (next - prev), 0, 1) * 100}%`;
@@ -2534,8 +2560,8 @@ let zoomI = 1, zoom = 1.1;
 $('zoomBtn').onclick = () => { zoomI = (zoomI + 1) % ZOOMS.length; };
 addEventListener('wheel', (e) => { zoom = clamp(zoom + e.deltaY * 0.001, 0.6, 1.8); zoomI = -1; }, { passive: true });
 $('journalBtn').onclick = openJournal;
-$('mute').onclick = () => { Snd.setMuted(!Snd.muted); $('mute').textContent = Snd.muted ? '🔇' : '🔊'; try { localStorage.setItem('beaverMute', Snd.muted ? '1' : '0'); } catch (_) {} };
-try { if (localStorage.getItem('beaverMute') === '1') { Snd.muted = true; $('mute').textContent = '🔇'; } } catch (_) {}
+$('mute').onclick = () => { Snd.setMuted(!Snd.muted); $('mute').innerHTML = icon(Snd.muted ? 'mute' : 'sound'); try { localStorage.setItem('beaverMute', Snd.muted ? '1' : '0'); } catch (_) {} };
+try { if (localStorage.getItem('beaverMute') === '1') { Snd.muted = true; $('mute').innerHTML = icon('mute'); } } catch (_) {}
 
 // ======================================================================
 // Save / load
@@ -2656,8 +2682,8 @@ function startGame(data) {
   renderGoal();
   if (!data) {
     $('joyHint').style.display = 'block';
-    setTimeout(() => toast('Find a tree and hold 🦷 to chew it down', 4000), 800);
-  } else toast('Welcome back to your valley 🌿', 2600);
+    setTimeout(() => toast(`Find a tree and hold ${icon('tooth')} to chew it down`, 4000), 800);
+  } else toast(`Welcome back to your valley ${icon('leaf')}`, 2600);
 }
 function newValley() { try { localStorage.removeItem(SAVE_KEY); } catch (_) {} startGame(null); }
 {
@@ -2804,7 +2830,7 @@ function spawnLife(nightAmt) {
     const wantKits = Math.min(6, lodge.tier + Math.floor(area / 250));
     if (kits.length < wantKits) {
       addKit();
-      toast(kits.length === 1 ? '🦫 A kit was born in the lodge!' : `🦫 Another kit! That makes ${kits.length}`, 3200);
+      toast(kits.length === 1 ? `${icon('beaver')} A kit was born in the lodge!` : `${icon('beaver')} Another kit! That makes ${kits.length}`, 3200);
       Snd.chime();
       if (kits.length >= 3) completeGoal('kits');
     }
@@ -2832,9 +2858,10 @@ function buildTarget() {
   if (lodge && Math.hypot(nodeX(i) - lodge.x, nodeZ(i) - lodge.z) < lodge.r + 0.9) ok = false;
   return { i, ok };
 }
-function setAction(icon, label, on, p = 0) {
-  $('actIcon').textContent = icon;
-  $('actLabel').textContent = label;
+let actIconName = 'tooth', actLabelText = 'Chew';
+function setAction(name, label, on, p = 0) {
+  if (name !== actIconName) { $('actIcon').innerHTML = icon(name); actIconName = name; }
+  if (label !== actLabelText) { $('actLabel').textContent = label; actLabelText = label; }
   actBtn.classList.toggle('off', !on);
   actBtn.style.setProperty('--p', p);
 }
@@ -2877,7 +2904,7 @@ function update(dt) {
   // ---- sky ----
   const prevDayT = dayT;
   dayT = (dayT + dt / DAY_LEN) % 1;
-  if (running && dayT < prevDayT) { day++; banner(`☀️ Day ${day}`, 2200); }
+  if (running && dayT < prevDayT) { day++; banner(`${icon('sun')} Day ${day}`, 2200); }
   evalSky(dayT);
   env.top.lerp(rainTop, rainAmt * 0.6);
   env.hor.lerp(rainHor, rainAmt * 0.55);
@@ -2915,7 +2942,7 @@ function update(dt) {
   // ---- gentle rain showers ----
   if (running) {
     if (rainLeft > 0) { rainLeft -= dt; if (rainLeft <= 0) rainT = rand(200, 360); }
-    else { rainT -= dt; if (rainT <= 0) { rainLeft = rand(35, 60); toast('🌧️ A gentle shower. Everything grows faster in the rain.', 3000); } }
+    else { rainT -= dt; if (rainT <= 0) { rainLeft = rand(35, 60); toast(`${icon('rain')} A gentle shower. Everything grows faster in the rain.`, 3000); } }
   }
   rainAmt += ((rainLeft > 0 ? 1 : 0) - rainAmt) * Math.min(1, dt * 0.5);
   rain.material.opacity = rainAmt * 0.35;
@@ -2934,7 +2961,7 @@ function update(dt) {
       if (area >= 200) completeGoal('w200');
       if (area >= 500) completeGoal('w500');
       if (area >= 1000) completeGoal('w1000');
-      for (const m of MILESTONES) if (before < m && area >= m && m >= 100) { banner(`🌿 ${m} m² of wetland`, 2400); Snd.chime(); }
+      for (const m of MILESTONES) if (before < m && area >= m && m >= 100) { banner(`${icon('leaf')} ${m} m² of wetland`, 2400); Snd.chime(); }
     }
   }
   colorT -= dt;
@@ -3027,7 +3054,7 @@ function update(dt) {
   }
   player.chewing = false;
   actCool -= dt;
-  if (!ctx) setAction(carry >= CAP ? '🪵' : '🦷', carry >= CAP ? 'Full' : 'Chew', false);
+  if (!ctx) setAction(carry >= CAP ? 'log' : 'tooth', carry >= CAP ? 'Full' : 'Chew', false);
   else if (ctx.type === 'chew') {
     const tr = ctx.tr, need = tr.kind === 'pine' ? 1.8 : tr.kind === 'snag' ? 0.9 : 1.3;
     if (actHeld) {
@@ -3044,7 +3071,7 @@ function update(dt) {
         Snd.creak();
       }
     }
-    setAction('🦷', 'Chew', true, clamp(tr.chew / need, 0, 1));
+    setAction('tooth', 'Chew', true, clamp(tr.chew / need, 0, 1));
   } else if (ctx.type === 'lodge') {
     if (actHeld && actCool <= 0) {
       actCool = 0.3; carry--; lodge.progress++;
@@ -3053,13 +3080,13 @@ function update(dt) {
       if (lodge.progress >= LODGE_COST[lodge.tier]) {
         lodge.tier++; lodge.progress = 0;
         Snd.goal();
-        if (lodge.tier === 1) { completeGoal('lodge'); banner('🏡 Your lodge is finished!<small>A warm, dry home in the middle of the pond. Kits will follow.</small>', 3600); }
-        else banner(`🏡 Lodge enlarged!<small>Room for a bigger family.</small>`, 3000);
+        if (lodge.tier === 1) { completeGoal('lodge'); banner(`${icon('lodge')} Your lodge is finished!<small>A warm, dry home in the middle of the pond. Kits will follow.</small>`, 3600); }
+        else banner(`${icon('lodge')} Lodge enlarged!<small>Room for a bigger family.</small>`, 3000);
       }
       buildLodge();
     }
     const cost = LODGE_COST[lodge.tier];
-    setAction('🏡', `Lodge ${lodge.progress}/${cost}`, true, lodge.progress / cost);
+    setAction('lodge', `Lodge ${lodge.progress}/${cost}`, true, lodge.progress / cost);
   } else if (ctx.type === 'startLodge') {
     if (actHeld && actCool <= 0) {
       actCool = 0.4;
@@ -3067,7 +3094,7 @@ function update(dt) {
       buildLodge();
       toast('Lodge started! Bring logs here to build it up.', 3200);
     }
-    setAction('🏡', 'Start lodge', true, 0);
+    setAction('lodge', 'Start lodge', true, 0);
   } else if (ctx.type === 'take') {
     if (actHeld && actCool <= 0) {
       actCool = 0.45;
@@ -3077,7 +3104,7 @@ function update(dt) {
       buildDamMesh(ctx.i);
       computeWater();
     }
-    setAction('🪓', 'Take apart', true, 0);
+    setAction('axe', 'Take apart', true, 0);
   }
 
   // ---- build ----
@@ -3152,7 +3179,7 @@ function update(dt) {
     if (running && carry < CAP && Math.hypot(l.x - player.pos.x, l.z - player.pos.z) < 1.3) {
       scene.remove(l.m); groundLogs.splice(i, 1); carry++;
       Snd.pick(carry);
-      popup('+1 🪵', l.x, l.m.position.y + 0.8, l.z);
+      popup(`+1 ${icon('log')}`, l.x, l.m.position.y + 0.8, l.z);
       if (!player.tut1) { player.tut1 = true; setTimeout(() => toast('Logs! Head to the stream and tap Build to start a dam.', 4200), 600); }
     }
   }
