@@ -2148,7 +2148,7 @@ function updateReeds() {
 // ======================================================================
 let carry = 0, running = false, dayT = 0.08, day = 1, area = 0, areaShown = 0, rainLeft = 0, rainT = 200, rainAmt = 0, shake = 0;
 let lodge = null, slapCool = 0, dash = 0, saveT = 0, plantT = 0, sapT = 30, lifeT = 0, fishT = 10, deerT = 120, ambT = 0;
-const player = { g: makeBeaver(), pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, y: 0, moving: 0, swim: false, chewing: false, step: 0, slapT: 0 };
+const player = { g: makeBeaver(), pos: new THREE.Vector3(), vel: new THREE.Vector3(), yaw: 0, y: 0, pitch: 0, moving: 0, swim: false, chewing: false, step: 0, slapT: 0 };
 scene.add(player.g);
 let felled = new Set(), snagged = new Set();
 const goals = {}, disc = {};
@@ -2697,6 +2697,38 @@ function randomNear(list, x, z, r) {
   for (let k = 0; k < 14; k++) { const i = pick(list); if (Math.hypot(nodeX(i) - x, nodeZ(i) - z) < r) return i; }
   return list.length ? pick(list) : -1;
 }
+// The tail is a long flat paddle cantilevered behind the body, so on a slope its
+// tip sits well away from the point the beaver stands on. TAIL_PIVOT/_LEN mirror
+// the tail group's placement in makeBeaver(); TAIL_BIAS is the mesh's own tilt.
+const TAIL_PIVOT_Y = 0.28, TAIL_PIVOT_Z = -0.68, TAIL_LEN = 0.98, TAIL_BIAS = 0.08, TAIL_CLEAR = 0.06;
+
+// Slope under the body, along the way it is facing: positive going downhill.
+function slopePitch(x, z, yaw, d = 0.9) {
+  const fx = Math.sin(yaw) * d, fz = Math.cos(yaw) * d;
+  return clamp(Math.atan2(groundAt(x - fx, z - fz) - groundAt(x + fx, z + fz), d * 2), -0.6, 0.6);
+}
+
+// World position of the tail tip for a given body pitch and tail angle.
+function tailTip(x, y, z, yaw, pitch, a) {
+  const ty = TAIL_PIVOT_Y + TAIL_LEN * Math.sin(a), tz = TAIL_PIVOT_Z - TAIL_LEN * Math.cos(a);
+  const ry = ty * Math.cos(pitch) - tz * Math.sin(pitch), rz = ty * Math.sin(pitch) + tz * Math.cos(pitch);
+  return { y: y + ry, x: x + Math.sin(yaw) * rz, z: z + Math.cos(yaw) * rz };
+}
+
+// Raise the tail just enough that its tip clears the ground it is sweeping over.
+// The tip height is `base + TAIL_LEN * sin(a + pitch)`, so the angle that just
+// clears inverts directly; two passes settle the ground sample under the new tip.
+function tailLift(x, y, z, yaw, pitch, a) {
+  for (let i = 0; i < 2; i++) {
+    const tip = tailTip(x, y, z, yaw, pitch, a);
+    const want = groundAt(tip.x, tip.z) + TAIL_CLEAR;
+    if (tip.y >= want) break;
+    const base = tip.y - TAIL_LEN * Math.sin(a + pitch);
+    a = Math.max(a, Math.asin(clamp((want - base) / TAIL_LEN, -1, 1)) - pitch);
+  }
+  return a;
+}
+
 function faceTo(g, yaw, dt, rate = 6) { g.rotation.y += Math.atan2(Math.sin(yaw - g.rotation.y), Math.cos(yaw - g.rotation.y)) * Math.min(1, dt * rate); }
 
 // ---------- wildlife ----------
@@ -3265,9 +3297,14 @@ function update(dt) {
   g.rotation.y = player.yaw;
   const squash = player.swim ? 1 : 1 + Math.sin(player.step * 2) * 0.035 * player.moving;
   ud.rig.scale.set(1 / Math.sqrt(squash), squash, 1 / Math.sqrt(squash));
+  const pitch = player.swim ? 0 : slopePitch(player.pos.x, player.pos.z, player.yaw);
+  player.pitch += (pitch - player.pitch) * Math.min(1, dt * 6);
+  ud.rig.rotation.x = player.pitch;
   ud.rig.rotation.z = player.swim ? Math.sin(t * 2) * 0.05 : Math.sin(player.step) * 0.06 * player.moving;
   player.slapT = Math.max(0, player.slapT - dt);
-  ud.tail.rotation.x = player.slapT > 0 ? -1.2 * Math.sin((player.slapT / 0.35) * Math.PI) : player.swim ? Math.sin(t * 7) * 0.3 * (0.3 + player.moving) : -0.12 + Math.sin(t * 6) * 0.08 * player.moving;
+  let tailA = player.slapT > 0 ? -1.2 * Math.sin((player.slapT / 0.35) * Math.PI) : player.swim ? Math.sin(t * 7) * 0.3 * (0.3 + player.moving) : -0.12 + Math.sin(t * 6) * 0.08 * player.moving;
+  if (!player.swim) tailA = tailLift(g.position.x, g.position.y, g.position.z, player.yaw, player.pitch, tailA + TAIL_BIAS) - TAIL_BIAS;
+  ud.tail.rotation.x = tailA;
   ud.head.rotation.x = player.chewing ? Math.sin(t * 34) * 0.12 : Math.sin(t * 1.2) * 0.04;
   ud.head.rotation.y = player.chewing ? 0 : Math.sin(t * 0.6) * 0.18 * (1 - player.moving);
   ud.carry.children.forEach((l, i) => { l.visible = i < carry; });
