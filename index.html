@@ -38,7 +38,10 @@
   .ibtn { pointer-events: auto; border: 1px solid var(--frame-line); font: inherit; color: inherit; cursor: pointer; width: 44px; display: flex; align-items: center; justify-content: center; font-size: 18px; padding: 0; transition: background .2s var(--ease); }
   .ibtn:hover { background: rgba(241, 239, 230, .14); }
   #btns { margin-left: auto; display: flex; gap: 7px; }
-  #goal { position: fixed; top: calc(74px + var(--safe-t)); left: calc(10px + var(--safe-l)); z-index: 5; pointer-events: none; font-size: 14.5px; padding: 6px 13px; max-width: 76vw; transition: transform .4s var(--ease), opacity .5s, border-color .4s, color .4s; }
+  #hud2 { position: fixed; top: calc(74px + var(--safe-t)); left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r)); display: flex; flex-wrap: wrap; gap: 7px; align-items: flex-start; pointer-events: none; z-index: 5; }
+  #goal { font-size: 14.5px; padding: 6px 13px; max-width: 76vw; transition: transform .4s var(--ease), opacity .5s, border-color .4s, color .4s; }
+  #damPill { min-width: 124px; }
+  .gone { display: none !important; }
   #goal.done { transform: scale(1.04); border-color: rgba(143, 179, 90, .6); color: #dceab9; }
   #toast { position: fixed; left: 50%; top: calc(116px + var(--safe-t)); transform: translateX(-50%) translateY(-6px); background: rgba(33, 28, 31, .72); -webkit-backdrop-filter: blur(9px); backdrop-filter: blur(9px); border: 1px solid var(--frame-line); color: var(--frame-ink); padding: 9px 18px; border-radius: 999px; font-size: 15px; text-align: center; max-width: 88vw; opacity: 0; transition: opacity .5s, transform .5s var(--ease); pointer-events: none; z-index: 6; }
   #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -125,6 +128,7 @@
   <symbol id="i-lodge" viewBox="0 0 24 24"><path d="M3.2 18.4h17.6"/><path d="M4.8 18.4C5.6 12.6 8.4 9 12 9s6.4 3.6 7.2 9.4"/><path d="M6.6 14.4h10.8M8.8 11.2h6.4"/></symbol>
   <symbol id="i-axe" viewBox="0 0 24 24"><path d="M4.8 19.2 12.5 11.5"/><path d="M11.9 10.9 16.1 6.7c2.2 1 3.9 2.7 4.9 4.9l-4.2 4.2z"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.8 12.4 9.8 17.6 19.2 6.8"/></symbol>
+  <symbol id="i-dam" viewBox="0 0 24 24"><path d="M3 18.6h18"/><path d="M7.2 18.6 8.9 9.6h6.2l1.7 9z"/><path d="M8.4 13.2h7.2"/><path d="M3.2 12.4c1.1-.8 2.2-.8 3.3 0M3.2 15.6c1.1-.8 2.2-.8 3.3 0"/></symbol>
   <symbol id="i-duck" viewBox="0 0 24 24"><ellipse cx="10.6" cy="14.6" rx="6" ry="3.5"/><circle cx="16.2" cy="9.2" r="2.7"/><path d="M14.3 11.2c-.8.8-1.6 1.6-2.3 2.2"/><path d="M18.7 8.4h2.8l-1.3 1.5h-1.6"/><circle cx="16.8" cy="8.6" r=".6" fill="currentColor" stroke="none"/><path d="M2.8 19.6h18.4"/></symbol>
   <symbol id="i-beaver" viewBox="0 0 24 24"><circle cx="6.4" cy="7.4" r="1.8"/><circle cx="17.6" cy="7.4" r="1.8"/><path d="M12 5.4c-3.7 0-6.6 2.8-6.6 6.2S8.3 18 12 18s6.6-2.9 6.6-6.4S15.7 5.4 12 5.4z"/><circle cx="9.5" cy="10.6" r=".8" fill="currentColor" stroke="none"/><circle cx="14.5" cy="10.6" r=".8" fill="currentColor" stroke="none"/><path d="M10.4 13.8h3.2v3.1h-3.2zM12 13.8v3.1"/></symbol>
   <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.4"/><path d="M12 3.2v2.2M12 18.6v2.2M3.2 12h2.2M18.6 12h2.2M5.8 5.8l1.6 1.6M16.6 16.6l1.6 1.6M18.2 5.8l-1.6 1.6M7.4 16.6l-1.6 1.6"/></symbol>
@@ -142,7 +146,10 @@
     <button class="pill ibtn" id="mute" aria-label="Sound"><svg class="i" aria-hidden="true"><use href="#i-sound"/></svg></button>
   </div>
 </div>
-<div class="pill hidden" id="goal"></div>
+<div id="hud2">
+  <div class="pill hidden" id="goal"></div>
+  <div class="pill gone" id="damPill"><small>Dam</small><span class="val"><svg class="i" aria-hidden="true"><use href="#i-dam"/></svg><span id="damState">Sound</span></span><div class="bar"><i id="damBar"></i></div></div>
+</div>
 <div id="toast"></div>
 <div id="banner"></div>
 <div id="joy"><div id="knob"></div></div>
@@ -2387,7 +2394,7 @@ function setDamSag(i) {
 }
 
 // ---------- dams wear down and leak ----------
-const WEAR_RATE = 0.0035, PATCH_AT = 0.12, LEAK_AT = 0.22;
+const WEAR_RATE = 0.00175, PATCH_AT = 0.12, LEAK_AT = 0.22;
 let wearDrift = 0, leakWarned = false, leakT = 0, patchHinted = false;
 function worstDam() {
   let w = 0;
@@ -2551,7 +2558,7 @@ function openJournal() {
   const sections = [...damMeshes.keys()].filter((i) => dam[i]);
   if (sections.length) {
     const w = worstDam();
-    const state = w > 0.6 ? 'close to washing out' : w > LEAK_AT ? 'leaking, needs patching' : w > PATCH_AT ? 'starting to wear' : 'sound';
+    const state = w > 0.6 ? 'breaking up, patch it now' : w > LEAK_AT ? 'leaking, needs patching' : w > PATCH_AT ? 'starting to wear' : 'sound';
     h += `<p class="muted">Dam · ${sections.length} section${sections.length > 1 ? 's' : ''} · ${state}</p>`;
   }
   h += `<h2>Goals · ${done}/${GOALS.length}</h2><ul>`;
@@ -2626,7 +2633,22 @@ function updateHUD() {
   const next = MILESTONES.find((m) => m > area) || MILESTONES[MILESTONES.length - 1];
   const prev = [...MILESTONES].reverse().find((m) => m <= area) || 0;
   $('wetBar').style.width = `${clamp((area - prev) / (next - prev), 0, 1) * 100}%`;
+  // dam condition: the bar is how much of the worst section is still sound
+  const sections = damMeshes.size;
+  damPill.classList.toggle('gone', !sections);
+  if (sections) {
+    const w = worstDam();
+    damBar.style.width = `${Math.round((1 - w) * 100)}%`;
+    const st = w > 0.6 ? 'Breaking' : w > LEAK_AT ? 'Leaking' : w > PATCH_AT ? 'Wearing' : 'Sound';
+    if (st !== damShown) {
+      damShown = st;
+      damState.textContent = st;
+      damBar.style.background = st === 'Breaking' ? '#d4836f' : st === 'Leaking' ? '#e0b45f' : st === 'Wearing' ? '#cfc272' : '';
+      damPill.style.borderColor = st === 'Breaking' ? 'rgba(212, 131, 111, .55)' : st === 'Leaking' ? 'rgba(224, 180, 95, .5)' : '';
+    }
+  }
 }
+let damShown = '';
 
 // ======================================================================
 // Input
@@ -2645,6 +2667,7 @@ addEventListener('keyup', (e) => { keys[e.code] = false; if (e.code === 'Space' 
 let joyId = null, joyOx = 0, joyOy = 0;
 const joyV = { x: 0, y: 0 };
 const joy = $('joy'), knob = $('knob'), actBtn = $('act'), slapBtn = $('slap'), buildBtn = $('build');
+const damPill = $('damPill'), damBar = $('damBar'), damState = $('damState');
 renderer.domElement.addEventListener('pointerdown', (e) => {
   if (joyId !== null || !running) return;
   joyId = e.pointerId; joyOx = e.clientX; joyOy = e.clientY;
